@@ -6,9 +6,21 @@ using System;
 /// <summary>
 /// Controls the emotional balloon interaction in a meditation experience.
 /// Handles spawn positioning, touch interactions, material changes, and audio playback.
+/// Implements a state system to ensure only one balloon can be actively playing audio at a time.
 /// </summary>
 public class BalloonEmotionController : MonoBehaviour
 {
+    // Enum to track the balloon state
+    public enum BalloonState
+    {
+        Sleep,      // Initial state - not yet interacted with
+        Touched,    // Currently being interacted with (playing audio, material changed)
+        Awake       // Has been interacted with before, but not currently playing audio
+    }
+
+    // Static reference to track which balloon is currently in Touched state
+    private static BalloonEmotionController currentlyTouchedBalloon = null;
+
     [Header("Balloon Settings")]
     [SerializeField] private Material defaultMaterial;
     [SerializeField] private Material activatedMaterial;
@@ -37,6 +49,20 @@ public class BalloonEmotionController : MonoBehaviour
     private RigidbodyInterpolation originalInterpolation;
     private float originalDrag;
     private float originalAngularDrag;
+
+    // Current state of this balloon
+    private BalloonState currentState = BalloonState.Sleep;
+
+    // Property to safely get/set the current state with debugging
+    public BalloonState CurrentState
+    {
+        get { return currentState; }
+        set
+        {
+            if (debugMode) Debug.Log($"Balloon state changing from {currentState} to {value}");
+            currentState = value;
+        }
+    }
 
     private void Start()
     {
@@ -72,6 +98,9 @@ public class BalloonEmotionController : MonoBehaviour
 
         // Position the balloon in a random position within the room boundaries
         PositionBalloonInRoom();
+
+        // Initialize to Sleep state
+        CurrentState = BalloonState.Sleep;
     }
 
     private void SetupInteractionEvents()
@@ -105,8 +134,12 @@ public class BalloonEmotionController : MonoBehaviour
 
     private void OnDestroy()
     {
-        // We'll skip cleanup of the reflection-based events as it's more complex
-        // This shouldn't cause issues as the object is being destroyed anyway
+        // If this is the currently touched balloon, clear the static reference
+        if (currentlyTouchedBalloon == this)
+        {
+            currentlyTouchedBalloon = null;
+            if (debugMode) Debug.Log("Clearing currentlyTouchedBalloon reference on destroy");
+        }
     }
 
     private void PositionBalloonInRoom()
@@ -180,15 +213,11 @@ public class BalloonEmotionController : MonoBehaviour
     {
         if (debugMode)
         {
-            Debug.Log("OnTouchInteraction called");
+            Debug.Log($"OnTouchInteraction called. Current state: {CurrentState}");
         }
 
-        // Only trigger the full interaction sequence once
-        if (!hasBeenInteractedWith)
-        {
-            hasBeenInteractedWith = true;
-            StartCoroutine(HandleInteractionSequence());
-        }
+        // Handle the touch based on the current state
+        HandleStateBasedInteraction();
     }
 
     // Handle trigger collisions as our primary interaction method
@@ -196,7 +225,7 @@ public class BalloonEmotionController : MonoBehaviour
     {
         if (debugMode)
         {
-            Debug.Log($"Trigger entered by: {other.gameObject.name} with tag: {other.gameObject.tag}");
+            Debug.Log($"Trigger entered by: {other.gameObject.name} with tag: {other.gameObject.tag}. Current state: {CurrentState}");
         }
 
         // Check if this is a hand collider - look for common tags and names
@@ -214,15 +243,51 @@ public class BalloonEmotionController : MonoBehaviour
             Debug.Log($"Is collision with a hand? {isHand} | Object: {other.gameObject.name} | Root: {other.transform.root.name}");
         }
 
-        if (!hasBeenInteractedWith && isHand)
+        if (isHand)
         {
-            if (debugMode)
-            {
-                Debug.Log("Hand collision detected - starting interaction sequence");
-            }
+            // Handle the interaction based on current state
+            HandleStateBasedInteraction();
+        }
+    }
 
-            hasBeenInteractedWith = true;
-            StartCoroutine(HandleInteractionSequence());
+    // New method to handle interactions based on the balloon's current state
+    private void HandleStateBasedInteraction()
+    {
+        // Only proceed if we're not in the middle of an interaction and no other balloon is active
+        switch (CurrentState)
+        {
+            case BalloonState.Sleep:
+                // First interaction with this balloon
+                if (currentlyTouchedBalloon == null)
+                {
+                    // Set this as the currently touched balloon
+                    currentlyTouchedBalloon = this;
+                    CurrentState = BalloonState.Touched;
+                    hasBeenInteractedWith = true;
+                    StartCoroutine(HandleInteractionSequence());
+                }
+                else if (debugMode)
+                {
+                    Debug.Log("Cannot interact: Another balloon is already in Touched state");
+                }
+                break;
+
+            case BalloonState.Awake:
+                // This balloon has been interacted with before
+                // We don't start a new interaction sequence or change materials
+                if (debugMode)
+                {
+                    Debug.Log("Balloon is in Awake state - allowing physical interaction without audio/visual effects");
+                }
+                break;
+
+            case BalloonState.Touched:
+                // Already being interacted with, do nothing
+                if (debugMode)
+                {
+                    Debug.Log("Balloon is already in Touched state");
+                }
+                break;
         }
     }
 
@@ -231,6 +296,13 @@ public class BalloonEmotionController : MonoBehaviour
         if (debugMode)
         {
             Debug.Log("Starting interaction sequence");
+        }
+
+        // Double-check we're actually the currently touched balloon
+        if (currentlyTouchedBalloon != this)
+        {
+            if (debugMode) Debug.LogWarning("This balloon is no longer the currently touched balloon - aborting sequence");
+            yield break;
         }
 
         // Store current position and rotation
@@ -362,8 +434,14 @@ public class BalloonEmotionController : MonoBehaviour
 
         if (debugMode) Debug.Log("Balloon physics and interaction restored");
 
-        // Disable this script to allow normal balloon behavior
-        if (debugMode) Debug.Log("Disabling BalloonEmotionController - balloon will now behave normally");
-        this.enabled = false;
+        // Clear the currentlyTouchedBalloon reference
+        if (currentlyTouchedBalloon == this)
+        {
+            currentlyTouchedBalloon = null;
+            if (debugMode) Debug.Log("Cleared currentlyTouchedBalloon reference");
+        }
+
+        // Change state to Awake - the balloon has been interacted with but is no longer playing audio
+        CurrentState = BalloonState.Awake;
     }
 }

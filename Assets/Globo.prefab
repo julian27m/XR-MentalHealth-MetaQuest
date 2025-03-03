@@ -112,7 +112,7 @@ GameObject:
   - component: {fileID: 6594817664019266292}
   m_Layer: 0
   m_Name: Globo
-  m_TagString: Untagged
+  m_TagString: Balloon
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -300,6 +300,7 @@ MonoBehaviour:
   emotionMessageClip: {fileID: 0}
   audioSource: {fileID: 0}
   roomMeshContainer: {fileID: 0}
+  debugMode: 1
 --- !u!114 &6594817664019266292
 MonoBehaviour:
   m_ObjectHideFlags: 0
